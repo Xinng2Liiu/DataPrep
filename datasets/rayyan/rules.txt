@@ -1,0 +1,2 @@
+!jounral_abbreviation(x) v !journal_issn(x) v journal_title(y)
+!jounral_abbreviation(x) v journal_issn(y)

@@ -9,7 +9,7 @@ project_root = os.path.abspath(os.path.join(current_dir, "../../"))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 from dataprep.tabular.detection.ZeroED import ZeroED  # 导入类
-
+from dataprep.tabular.detection.MLNClean import MLNClean as MLNCleanDetector
 
 # ==========================================
 # 1. 准备数据
@@ -67,6 +67,20 @@ if __name__ == "__main__":  # 注意：这里必须是双下划线
         result_dir='./temp',
         verbose=True
     )
+
+    # detector = MLNCleanDetector(
+    #     rules_path='datasets/flights/rules.txt',     # MLN 规则文件路径
+    #     evidence_path=None,                           # 不传则用 dirty_df 自身作证据
+    #     partition_number=1,                           # 一般保持为 1
+    #     agp_threshold=2,                              # AGP 异常组阈值
+    #     mcmc_samples=20,                              # Pyro MCMC 采样数
+    #     mcmc_warmup=20,
+    #     verbose=True,
+    # )
+    # # MLNClean 期望输入 DataFrame 含 'ID' 列
+    # # 训练 + 预测
+    # error_mask = detector.train_and_predict(dirty_df)   # 返回 bool DataFrame
+
 
     # 3. 训练
     print("\n>>> 正在运行")

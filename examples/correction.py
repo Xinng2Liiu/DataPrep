@@ -10,7 +10,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from dataprep.tabular.correction.ZeroEC import ZeroEC
-
+from dataprep.tabular.correction.MLNClean import MLNClean as MLNCleanCorrector
 
 # 1. 评估函数：用于计算修复准确率
 def evaluate_correction(name, df_clean, df_corrected, df_mask, time_cost):
@@ -109,3 +109,27 @@ if __name__ == "__main__":
     print("=" * 60)
     print(pd.DataFrame([result]).to_string(index=False))
     print("-" * 60)
+
+    # # 1. 先用 MLNClean 检测器找错
+    # det = MLNCleanDetector(
+    #     rules_path='datasets/flights/rules.txt',
+    #     verbose=True,
+    # )
+    # error_mask = det.train_and_predict(df_dirty)
+    #
+    # # 2. 再用 MLNClean 修复器修错 (复用同一份规则)
+    # cor = MLNCleanCorrector(
+    #     rules_path='datasets/flights/rules.txt',
+    #     evidence_path=None,
+    #     partition_number=1,
+    #     mcmc_samples=20,
+    #     verbose=True,
+    # )
+    # df_fixed = cor.train_and_predict(df_dirty, detection_mask=error_mask)
+    #
+    # # 也可以全量修复 (不传 mask, 相当于原版 MLNClean):
+    # # df_fixed_full = cor.train_and_predict(df_dirty)
+    #
+    # # 评估
+    # result = evaluate_correction("MLNClean", df_clean, df_fixed, df_mask, cost)
+    # print(pd.DataFrame([result]).to_string(index=False))

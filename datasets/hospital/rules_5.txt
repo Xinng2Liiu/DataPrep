@@ -1,0 +1,5 @@
+!ProviderNumber(x) v HospitalName(y)
+!ProviderNumber(x) v City(y)
+!ProviderNumber(x) v State(y)
+!MeasureCode(x) v MeasureName(y)
+!MeasureCode(x) v Condition(y)

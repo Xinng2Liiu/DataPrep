@@ -1,0 +1,4 @@
+!flight(x) v act_dep_time(y)
+!flight(x) v act_arr_time(y)
+!flight(x) v sched_dep_time(y)
+!flight(x) v sched_arr_time(y)

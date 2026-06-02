@@ -11,6 +11,7 @@ if project_root not in sys.path:
 from dataprep.tabular.imputation.GAIN import GAIN
 from dataprep.tabular.imputation.SCIS import SCIS
 from dataprep.tabular.imputation.VAEGAIN import VAEGAIN
+from dataprep.tabular.imputation.EDIT import EDIT
 
 def generate_fake_data(N=1000, D=10, missing_rate=0.2):
     """
@@ -69,6 +70,18 @@ def imputation():
     #     epoch=100,
     #     latent_size=5,  # 隐变量维度
     #     device='cuda' if torch.cuda.is_available() else 'cpu'
+    # )
+
+    # # 以下为 EDIT 的使用示例 (基于影响函数选样本)
+    # imputer = EDIT(
+    #     batch_size=8,
+    #     hint_rate=0.9,
+    #     alpha=10,
+    #     epoch=10,
+    #     initial_size=300,        # 初始训练集大小, 论文用 6000, 小数据集应适配
+    #     validation_size=200,     # 用于影响函数打分的验证集大小
+    #     damping=1e-2,            # generator L2 正则系数
+    #     device='cuda' if torch.cuda.is_available() else 'cpu',
     # )
 
     # 3. 训练并预测

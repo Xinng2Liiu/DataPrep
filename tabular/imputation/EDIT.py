@@ -1,0 +1,172 @@
+"""
+EDIT: Efficient and effective Data Imputation with influence functions (VLDB 2021)
+
+用法 (与 GAIN / SCIS 完全一致):
+    from dataprep.tabular.imputation.EDIT import EDIT
+
+    imputer = EDIT(
+        batch_size=8,
+        hint_rate=0.9,
+        alpha=10,
+        epoch=10,
+        initial_size=6000,
+        validation_size=6000,
+        device='cuda' if torch.cuda.is_available() else 'cpu',
+    )
+    imputed_data = imputer.train_and_predict(data_missing, missing_mask)
+"""
+import numpy as np
+import torch
+
+import dataprep.tabular.imputation.EDIT_modules as em
+from dataprep.tabular.imputation.base import BaseImputer
+
+
+class EDIT(BaseImputer):
+    """
+    EDIT Imputer.
+
+    Reference:
+        Miao et al. "Efficient and effective data imputation with influence functions."
+        VLDB 2021.
+
+    思路:
+        在 GAIN 框架上用影响函数 (Hessian^-1 · grad) 估计每个样本对最终
+        填补质量的贡献，挑出 Top-k 个最有用的样本做重训练，比直接训练
+        全部数据效果更好且更省时间。
+    """
+
+    def __init__(self,
+                 batch_size: int = 8,
+                 hint_rate: float = 0.9,
+                 alpha: float = 10,
+                 epoch: int = 10,
+                 initial_size: int = 6000,
+                 validation_size: int = 6000,
+                 damping: float = 1e-2,
+                 device: str = None):
+        """
+        Args:
+            batch_size       : Mini-batch 大小 (默认 8)
+            hint_rate        : GAIN 的 hint rate
+            alpha            : 生成器损失中 MSE 项的权重 (默认 10)
+            epoch            : 初始训练 / 重训练阶段各自的 epoch 数 (默认 10)
+            initial_size     : 初始训练集大小 (会和 no/2 取小，防止越界)
+            validation_size  : 验证集大小 (用于影响函数)
+            damping          : Generator L2 正则项系数 (默认 1e-2)
+            device           : 'cuda' or 'cpu'；不传则自动选
+        """
+        self.batch_size = batch_size
+        self.hint_rate = hint_rate
+        self.alpha = alpha
+        self.epoch = epoch
+        self.initial_size = initial_size
+        self.validation_size = validation_size
+        self.damping = damping
+        self.device = device if device else ('cuda' if torch.cuda.is_available() else 'cpu')
+
+        # 内部状态
+        self.norm_parameters = None
+        self.generator = None
+        self.discriminator = None
+
+    # ------------------------------------------------------------------
+    # Train
+    # ------------------------------------------------------------------
+    def train(self, data: np.ndarray, missing_mask: np.ndarray = None) -> None:
+        """
+        Args:
+            data         : np.ndarray, 原始数据 (缺失位置为 NaN 或任意值)
+            missing_mask : np.ndarray, 1=观测, 0=缺失。不传时按 NaN 自动生成。
+        """
+        if hasattr(self, '_create_temp_dir'):
+            self._create_temp_dir(prefix="edit_train_")
+
+        data = np.array(data, dtype=np.float64)
+        if missing_mask is None:
+            missing_mask = 1. - np.isnan(data)
+        missing_mask = np.array(missing_mask, dtype=np.float64)
+
+        no, dim = data.shape
+        h_dim = int(dim)
+
+        # 1. 归一化 (用 NaN-aware 的 min/max)
+        data_for_norm = data.copy()
+        data_for_norm[missing_mask == 0] = np.nan
+        norm_data, self.norm_parameters = em.normalization(data_for_norm)
+        norm_data_x = np.nan_to_num(norm_data, 0).astype(np.float32)
+        mask_f32 = missing_mask.astype(np.float32)
+
+        # 2. 初始化网络
+        self.generator = em.EditGenerator(dim, h_dim).to(self.device)
+        self.discriminator = em.EditDiscriminator(dim, h_dim).to(self.device)
+
+        # 3. 调用 module 中的核心算法
+        params = {
+            'batch_size': self.batch_size,
+            'epoch': self.epoch,
+            'hint_rate': self.hint_rate,
+            'alpha': self.alpha,
+            'damping': self.damping,
+            'initial_size': self.initial_size,
+            'validation_size': self.validation_size,
+        }
+
+        print(f"Starting EDIT training on {self.device}...")
+        em.train_edit_algorithm(
+            self.generator,
+            self.discriminator,
+            norm_data_x,
+            mask_f32,
+            params,
+            self.device,
+        )
+
+        if hasattr(self, '_save_checkpoint'):
+            self._save_checkpoint("edit_imputer_complete.pkl")
+
+    # ------------------------------------------------------------------
+    # Predict
+    # ------------------------------------------------------------------
+    def predict(self, data: np.ndarray) -> np.ndarray:
+        """
+        Args:
+            data : np.ndarray, 待填补数据 (NaN 表示缺失)
+        Returns:
+            imputed_data : 填补后的完整数据
+        """
+        if self.generator is None:
+            raise RuntimeError("Model needs to be trained first. Call .train() first.")
+
+        self.generator.eval()
+
+        data = np.array(data, dtype=np.float64)
+        missing_mask = (1. - np.isnan(data)).astype(np.float32)
+        no, dim = data.shape
+
+        # 1. 归一化
+        norm_data = em.normalization_with_parameter(data, self.norm_parameters)
+        norm_data_x = np.nan_to_num(norm_data, 0).astype(np.float32)
+
+        # 2. 把缺失位置注入噪声 (和训练时一致)
+        z_mb = em.sample_Z(no, dim).astype(np.float32)
+        x_mb = missing_mask * norm_data_x + (1 - missing_mask) * z_mb
+
+        x_torch = torch.tensor(x_mb, dtype=torch.float32).to(self.device)
+        m_torch = torch.tensor(missing_mask, dtype=torch.float32).to(self.device)
+
+        # 3. 用 Generator 出补全值
+        with torch.no_grad():
+            imputed_norm_prob = self.generator(x_torch, m_torch).cpu().numpy()
+
+        # 4. 观测值保留，缺失位置用生成值
+        imputed_data_norm = missing_mask * norm_data_x + (1 - missing_mask) * imputed_norm_prob
+
+        # 5. 反归一化
+        imputed_data = em.renormalization(imputed_data_norm, self.norm_parameters)
+
+
+        # 6. 对类别型变量做 rounding，和原版 EDIT-GAIN 保持一致
+        imputed_data = em.rounding(imputed_data, data)
+
+        return imputed_data

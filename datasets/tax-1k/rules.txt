@@ -1,0 +1,4 @@
+!zip(x) v city(y)
+!zip(x) v state(y)
+!f_name(x) v gender(y)
+
