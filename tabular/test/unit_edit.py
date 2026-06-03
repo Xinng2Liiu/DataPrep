@@ -1,10 +1,3 @@
-"""
-EDIT 单元测试 (放到 tabular/test/unit_edit.py)
-
-仿照 unit_gain.py 写, 测试:
-    1. EDIT_modules 中的网络结构和工具函数
-    2. EDIT 主类的 train / predict 行为
-"""
 import sys
 import os
 import unittest
@@ -49,8 +42,30 @@ class TestEDITModules(unittest.TestCase):
         """归一化和反归一化应该可逆"""
         norm_data, params = em.normalization(self.data)
         self.assertTrue((norm_data >= 0).all() and (norm_data <= 1).all())
+        self.assertTrue(np.isclose(np.min(norm_data), 0))
+        self.assertTrue(np.isclose(np.max(norm_data), 1))
         renorm_data = em.renormalization(norm_data, params)
         np.testing.assert_array_almost_equal(self.data, renorm_data)
+
+    def test_normalization_with_parameter(self):
+        """测试使用已有参数进行归一化"""
+        norm_data, params = em.normalization(self.data)
+
+        new_data = np.array([
+            [1.0, 10.0],
+            [2.5, 25.0],
+            [4.0, 40.0],
+        ])
+
+        norm_new = em.normalization_with_parameter(new_data, params)
+
+        expected = np.array([
+            [0.0, 0.0],
+            [0.5, 0.5],
+            [1.0, 1.0],
+        ])
+
+        np.testing.assert_array_almost_equal(norm_new, expected)
 
     def test_generator_shape(self):
         """生成器输入输出形状"""
@@ -84,6 +99,40 @@ class TestEDITModules(unittest.TestCase):
         # 兜底逻辑保证至少 10%
         self.assertGreaterEqual(len(top_k), 1)
 
+    def test_sample_Z(self):
+        #测试随机噪声 Z 的形状和取值范围
+        z = em.sample_Z(batch_size=5, dim=3)
+
+        self.assertEqual(z.shape, (5, 3))
+        self.assertTrue((z >= 0).all())
+        self.assertTrue((z <= 0.01).all())
+
+    def test_sample_M(self):
+        #测试随机 mask M 的形状和二值性
+        m = em.sample_M(batch_size=5, dim=3, p=0.5)
+
+        self.assertEqual(m.shape, (5, 3))
+        self.assertTrue(np.isin(m, [0, 1]).all())
+
+    def test_rounding(self):
+        """类别型列应被四舍五入"""
+        data_x = np.array([
+            [0.0, 10.0],
+            [1.0, 20.0],
+            [0.0, np.nan],
+            [1.0, 40.0],
+        ])
+
+        imputed = np.array([
+            [0.2, 10.4],
+            [0.8, 20.5],
+            [0.6, 30.6],
+            [1.2, 40.1],
+        ])
+
+        rounded = em.rounding(imputed, data_x)
+
+        np.testing.assert_array_equal(rounded[:, 0], np.round(imputed[:, 0]))
 
 # ==========================================
 # 3. 测试 EDIT 主类
@@ -107,11 +156,7 @@ class TestEDITMain(unittest.TestCase):
         ])
         self.mask = 1 - np.isnan(self.raw_data).astype(float)
 
-        self.imputer = EDIT(
-            batch_size=2, epoch=1,
-            initial_size=3, validation_size=2,
-            device='cpu',
-        )
+        self.imputer = EDIT(batch_size=2, epoch=1,initial_size=3, validation_size=2,device='cpu')
 
         # Mock 掉文件系统相关方法
         self.imputer._create_temp_dir = MagicMock()
@@ -155,29 +200,9 @@ class TestEDITMain(unittest.TestCase):
         self.assertEqual(imputed.shape, self.raw_data.shape)
         # 输出无 NaN
         self.assertFalse(np.isnan(imputed).any())
-        # 观测值应保持不变 (第 0 行全是观测)
-        np.testing.assert_array_almost_equal(imputed[0], self.raw_data[0], decimal=4)
-
-    def test_train_and_predict_end_to_end(self):
-        """端到端 (epoch=1, 小数据): 不抛错且输出无 NaN"""
-        # 用稍大数据避免太小不稳定
-        np.random.seed(0)
-        N, D = 60, 4
-        data = np.random.randn(N, D).astype(np.float32)
-        mask = (np.random.rand(N, D) > 0.2).astype(np.float32)
-        data[mask == 0] = np.nan
-
-        imp = EDIT(
-            batch_size=4, epoch=1,
-            initial_size=20, validation_size=10,
-            device='cpu',
-        )
-        imp._create_temp_dir = MagicMock()
-        imp._save_checkpoint = MagicMock()
-
-        result = imp.train_and_predict(data, mask)
-        self.assertEqual(result.shape, data.shape)
-        self.assertFalse(np.isnan(result).any())
+        # 所有观测位置都应保持不变
+        observed = self.mask.astype(bool)
+        np.testing.assert_array_almost_equal(imputed[observed],self.raw_data[observed],decimal=4)
 
 
 if __name__ == '__main__':

@@ -1,13 +1,5 @@
 """
 MLNClean unit tests (放到 tabular/test/unit_mlnclean.py)
-
-重点测:
-    1. MLNClean_modules 中的纯函数 (规则解析、diff mask、apply mask)
-    2. detection / correction 主类的接口契约 (规则缺失报错、未训练 predict 报错)
-    3. 共享 mocked pipeline 的端到端流程
-
-由于 pyro MCMC 较慢, 真正的训练流程在 smoke test 里跑;
-这里用 mock 跳过 MCMC, 只测我们写的胶水代码.
 """
 import sys
 import os
@@ -92,6 +84,30 @@ class TestMLNCleanModules(unittest.TestCase):
         # mask=True 的格子用 cleaned
         self.assertEqual(fixed.at[1, 'val'], 'b')
         self.assertEqual(fixed.at[2, 'val'], 'c')
+
+    def test_apply_corrections_with_string_mask(self):
+        """apply_corrections_with_mask 必须正确处理字符串 mask"""
+        dirty = pd.DataFrame({
+            'ID': [1, 2],
+            'val': ['keep', 'BAD'],
+        })
+
+        cleaned = pd.DataFrame({
+            'ID': [1, 2],
+            'val': ['WRONG', 'fixed'],
+        })
+
+        mask = pd.DataFrame({
+            'ID': ['0', '0'],
+            'val': ['0', '1'],
+        })
+
+        fixed = mo.apply_corrections_with_mask(dirty, cleaned, mask)
+
+        # '0' 不能被当成 True，所以第 0 行必须保留 dirty
+        self.assertEqual(fixed.at[0, 'val'], 'keep')
+        # '1' 应该修复
+        self.assertEqual(fixed.at[1, 'val'], 'fixed')
 
     def test_data_partition_single(self):
         """partition_number=1 时应原样返回"""
