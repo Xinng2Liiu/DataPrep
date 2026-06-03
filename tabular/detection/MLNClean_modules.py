@@ -7,10 +7,6 @@ MLNClean 共享底层模块
               data_cleaning/{AGP, RSC, FCSR}.py
               weight_learning/Weight.py
 
-本文件把原 MLNClean 的所有流程拼成一个统一管线 (run_mln_clean_pipeline),
-detection 和 correction 都通过这个管线得到 "MLN 清洗后的 DataFrame",
-再各自决定怎么用 (做 diff / 局部覆盖)。
-
 依赖:
     - pandas, numpy           (必装)
     - python-Levenshtein      (AGP 阶段做异常组合并要用)
@@ -351,8 +347,7 @@ def _generate_weight_model(evidence, evidence_value, rules, list_header):
             pyro.factor(key, reason_eq)
 
 
-def train_mln_weights(evidence, evidence_value, rules, list_header,
-                      num_samples=20, warmup=20):
+def train_mln_weights(evidence, evidence_value, rules, list_header,num_samples=20, warmup=20):
     """
     用 Pyro NUTS-MCMC 学每条规则的权重.
     Returns:
@@ -502,14 +497,7 @@ def process_by_FCSR(split_data, data, weight_data, rules):
 # 7. 顶层管线 (detection 和 correction 共享)
 # =============================================================================
 
-def _clean_single_partition(data_name,
-                            processed_pair,
-                            rules,
-                            weight_data,
-                            original_columns,
-                            agp_threshold=2,
-                            verbose=True,
-                            partition_idx=None):
+def _clean_single_partition(data_name,processed_pair,rules,weight_data,original_columns,agp_threshold=2,verbose=True,partition_idx=None):
     """
     对单个 partition 执行原版 main.py 中从 block_into_group 到 FCSR 的流程。
 
@@ -592,14 +580,7 @@ def _clean_single_partition(data_name,
 
     return result[original_columns]
 
-def run_mln_clean_pipeline(dirty_df,
-                           rules_text_list,
-                           evidence_df=None,
-                           partition_number=1,
-                           agp_threshold=2,
-                           mcmc_samples=20,
-                           mcmc_warmup=20,
-                           verbose=True):
+def run_mln_clean_pipeline(dirty_df, rules_text_list,evidence_df=None,partition_number=1,agp_threshold=2,mcmc_samples=20,mcmc_warmup=20,verbose=True):
     """
     完整的 MLNClean 管线：输入脏 DataFrame，输出 MLN 清洗后的 DataFrame。
 
@@ -617,22 +598,27 @@ def run_mln_clean_pipeline(dirty_df,
                   RSC
               FCSR
         8. concat 所有 partition 的结果
-
+    """
     if not isinstance(dirty_df, pd.DataFrame):
         raise TypeError("dirty_df 必须是 pandas DataFrame。")
 
     if "ID" not in dirty_df.columns:
         raise ValueError("MLNClean 期望输入 DataFrame 含 'ID' 列。")
 
-    if evidence_df is None:
-        raise ValueError(
-            "必须指定 evidence_df 或 evidence_path。"
-            "原始 MLNClean 使用 rules_data.csv 作为 evidence，"
-            "用于 generate_evidence、generate_rule 和 MLN 权重学习。"
-        )
+    if rules_text_list is None:
+        raise ValueError("rules_text_list 不能为空。")
 
-    if not isinstance(evidence_df, pd.DataFrame):
-        raise TypeError("evidence_df 必须是 pandas DataFrame。")
+    if not isinstance(rules_text_list, (list, tuple)):
+        raise TypeError("rules_text_list 必须是规则字符串列表。")
+
+    if len(rules_text_list) == 0:
+        raise ValueError("rules_text_list 不能为空列表。")
+
+    if evidence_df is None:
+        raise ValueError("必须指定 evidence_df 或 evidence_path。")
+
+    if partition_number < 1:
+        raise ValueError("partition_number 必须 >= 1。")
 
     if verbose:
         print(
@@ -640,7 +626,7 @@ def run_mln_clean_pipeline(dirty_df,
             f"rules: {len(rules_text_list)}, "
             f"partition_number: {partition_number}"
         )
-    """
+
     # 1. 对应原 constructing_data(rules1_list)
     processed_pair = parse_rules(rules_text_list)
 
