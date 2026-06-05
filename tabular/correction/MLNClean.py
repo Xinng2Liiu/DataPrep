@@ -1,25 +1,4 @@
-"""
-MLNClean Corrector
-==================
-把 MLNClean 用作"修复器": 跑完整 MLN 清洗管线, 但**只把检测 mask 标记的格子**
-用清洗后的值覆盖, 其它格子保留原值.
-
-如果不传 detection_mask, 则相当于"全量修复" (与原版 MLNClean 等价).
-
-用法:
-    from dataprep.tabular.correction.MLNClean import MLNClean
-    from dataprep.tabular.detection.MLNClean import MLNClean as MLNCleanDetector
-
-    # 先检测
-    det = MLNCleanDetector(rules_path='rules.txt')
-    mask = det.train_and_predict(df_dirty)
-
-    # 再修复
-    cor = MLNClean(rules_path='rules.txt')
-    df_fixed = cor.train_and_predict(df_dirty, detection_mask=mask)
-"""
 import pandas as pd
-
 from dataprep.base import BaseEstimator
 # 共享 modules: 复用 detection 子包下的 MLNClean_modules
 import dataprep.tabular.detection.MLNClean_modules as mo
@@ -77,10 +56,9 @@ class MLNClean(BaseEstimator):
         self.detection_mask = detection_mask
         if self.detection_mask is None and detection_path is not None:
             self.detection_mask = pd.read_csv(detection_path)
-            # 兼容字符串 'True'/'False' / 0/1
-            self.detection_mask = self.detection_mask.replace(
-                {'True': True, 'False': False, 1: True, 0: False}
-            ).astype(bool)
+
+        if self.detection_mask is not None:
+            self.detection_mask = mo.to_bool_mask(self.detection_mask)
 
         self.partition_number = partition_number
         self.agp_threshold = agp_threshold
@@ -124,9 +102,7 @@ class MLNClean(BaseEstimator):
     # ------------------------------------------------------------------
     # Predict
     # ------------------------------------------------------------------
-    def predict(self,
-                dirty_df: pd.DataFrame,
-                detection_mask: pd.DataFrame = None) -> pd.DataFrame:
+    def predict(self,dirty_df: pd.DataFrame,detection_mask: pd.DataFrame = None) -> pd.DataFrame:
         """
         Args:
             dirty_df       : 原始脏 DataFrame
@@ -145,10 +121,11 @@ class MLNClean(BaseEstimator):
             if self.verbose:
                 print("[MLNClean-Cor] No detection mask: full replacement.")
             return self.cleaned_df_.copy()
+        mask = mo.to_bool_mask(mask)
 
         fixed = mo.apply_corrections_with_mask(dirty_df, self.cleaned_df_, mask)
         if self.verbose:
-            n_fixed = int(mask.astype(bool).values.sum())
+            n_fixed = int(mask.values.sum())
             print(f"[MLNClean-Cor] Applied corrections to {n_fixed} cells.")
         return fixed
 

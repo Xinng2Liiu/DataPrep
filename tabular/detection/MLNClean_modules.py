@@ -775,6 +775,18 @@ def compute_diff_mask(dirty_df, cleaned_df, exclude_columns=("ID",)):
 
     return mask
 
+def to_bool_mask(mask_df):
+    """
+    将 DataPrep detection mask 转为 bool
+        1 = 错误，需要修复
+        0 = 正常，不修复
+    """
+    return mask_df.replace({
+        "True": 1,
+        "False": 0,
+        "true": 1,
+        "false": 0,
+    }).astype(int).astype(bool)
 
 def apply_corrections_with_mask(dirty_df, cleaned_df, mask_df):
     """
@@ -789,9 +801,10 @@ def apply_corrections_with_mask(dirty_df, cleaned_df, mask_df):
         fixed_df : 在 mask 位置应用了 cleaned 值的 DataFrame
     """
     fixed = dirty_df.copy()
+    mask_df = to_bool_mask(mask_df)
     for col in dirty_df.columns:
         if col not in mask_df.columns or col not in cleaned_df.columns:
             continue
-        m = mask_df[col].astype(bool).values
+        m = mask_df[col].values
         fixed.loc[m, col] = cleaned_df[col].values[m]
     return fixed
