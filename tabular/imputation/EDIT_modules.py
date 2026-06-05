@@ -112,8 +112,9 @@ def sample_Z(batch_size, dim):
 
 def sample_M(batch_size, dim, p):
     """生成 Hint 向量所需的随机掩码 (>p 为 1)"""
+    np.random.seed(50)
     unif_random_matrix = np.random.uniform(0., 1., size=[batch_size, dim])
-    return 1. * (unif_random_matrix > p)
+    return 1. * (unif_random_matrix < p)
 
 
 # ==========================================
@@ -152,7 +153,7 @@ def _train_step(generator, discriminator, data_x, mask, batch_idx,
     bs, dim = x_mb.shape
 
     z_mb = sample_Z(bs, dim)
-    h_mb_temp = sample_M(bs, dim, 1 - params['hint_rate'])
+    h_mb_temp = sample_M(bs, dim, params['hint_rate'])
     h_mb = m_mb * h_mb_temp
     x_in = m_mb * x_mb + (1 - m_mb) * z_mb
 
@@ -213,7 +214,7 @@ def _make_inputs_torch(data_x, mask, params, device):
     """把 np 数据组装成训练时的 (x_in, m, h)，全部 GPU tensor"""
     no, dim = data_x.shape
     z = sample_Z(no, dim)
-    h = mask * sample_M(no, dim, 1 - params['hint_rate'])
+    h = mask * sample_M(no, dim, params['hint_rate'])
     x_in = mask * data_x + (1 - mask) * z
 
     return (
