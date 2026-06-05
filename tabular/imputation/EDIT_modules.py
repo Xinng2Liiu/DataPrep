@@ -347,17 +347,32 @@ def train_edit_algorithm(generator, discriminator, data_x, mask, params, device)
     no, dim = data_x.shape
     params.setdefault('damping', 1e-2)
 
-    # 切分: init + val (剩下的还是参与影响函数打分)
-    init_n = min(params['initial_size'], no // 2)
-    val_n = min(params['validation_size'], no - init_n)
-    sample_idx = np.random.randint(no, size=init_n + val_n)
-    init_idx = sample_idx[:init_n]
-    val_idx = sample_idx[init_n:init_n + val_n]
+    raw_data = np.array(data_x, dtype=np.float64)
+    raw_mask = np.array(mask, dtype=np.float32)
+    raw_data[raw_mask == 0] = np.nan
 
-    init_data = data_x[init_idx]
-    init_mask = mask[init_idx]
-    val_data = data_x[val_idx]
-    val_mask = mask[val_idx]
+    # 切分: init + val (剩下的还是参与影响函数打分)
+    init_n = int(params['initial_size'])
+    val_n = int(params['validation_size'])
+    sample_idx = np.random.randint(len(data_x), size=init_n + val_n)
+    init_idx = sample_idx[:init_n]
+    val_idx = sample_idx[init_n:]
+
+    # full data normalization
+    norm_data, norm_parameters = normalization(raw_data)
+    norm_data_x = np.nan_to_num(norm_data, 0).astype(np.float32)
+
+    # Initial data normalization
+    init_raw = raw_data[init_idx]
+    init_mask = raw_mask[init_idx]
+    init_norm_data, _ = normalization(init_raw)
+    init_data = np.nan_to_num(init_norm_data, 0).astype(np.float32)
+
+    # Validation data normalization
+    val_raw = raw_data[val_idx]
+    val_mask = raw_mask[val_idx]
+    val_norm_data, _ = normalization(val_raw)
+    val_data = np.nan_to_num(val_norm_data, 0).astype(np.float32)
 
     opt_g = optim.Adam(generator.parameters())
     opt_d = optim.Adam(discriminator.parameters())
@@ -373,7 +388,7 @@ def train_edit_algorithm(generator, discriminator, data_x, mask, params, device)
     print(f"\n[EDIT] Phase 2: Scoring all {no} samples via influence function")
     scores = compute_influence_scores(
         generator, discriminator,
-        data_x, mask,             # 给全量数据打分
+        norm_data_x, raw_mask,    # 给全量数据打分
         val_data, val_mask,       # 看对哪些验证样本有帮助
         init_data, init_mask,     # Hessian 用初始训练集估
         params, device
@@ -383,8 +398,8 @@ def train_edit_algorithm(generator, discriminator, data_x, mask, params, device)
           f"({len(top_k) / no:.1%}).")
 
     # ===== Phase 3: 重训练 =====
-    final_data = data_x[top_k]
-    final_mask = mask[top_k]
+    final_data = norm_data_x[top_k]
+    final_mask = raw_mask[top_k]
     print(f"\n[EDIT] Phase 3: Retraining on {len(top_k)} selected samples")
     _run_training_phase(
         generator, discriminator, final_data, final_mask,
@@ -392,3 +407,4 @@ def train_edit_algorithm(generator, discriminator, data_x, mask, params, device)
     )
 
     print("[EDIT] Training complete.")
+    return norm_parameters

@@ -33,7 +33,7 @@ class EDIT(BaseImputer):
             hint_rate        : GAIN 的 hint rate
             alpha            : 生成器损失中 MSE 项的权重 (默认 10)
             epoch            : 初始训练 / 重训练阶段各自的 epoch 数 (默认 10)
-            initial_size     : 初始训练集大小 (会和 no/2 取小，防止越界)
+            initial_size     : 初始训练集大小
             validation_size  : 验证集大小 (用于影响函数)
             damping          : Generator L2 正则项系数 (默认 1e-2)
             device           : 'cuda' or 'cpu'；不传则自动选
@@ -72,11 +72,9 @@ class EDIT(BaseImputer):
         no, dim = data.shape
         h_dim = int(dim)
 
-        # 1. 归一化 (用 NaN-aware 的 min/max)
-        data_for_norm = data.copy()
-        data_for_norm[missing_mask == 0] = np.nan
-        norm_data, self.norm_parameters = em.normalization(data_for_norm)
-        norm_data_x = np.nan_to_num(norm_data, 0).astype(np.float32)
+        # 1. 归一化
+        data_for_train = data.copy()
+        data_for_train[missing_mask == 0] = np.nan
         mask_f32 = missing_mask.astype(np.float32)
 
         # 2. 初始化网络
@@ -95,10 +93,10 @@ class EDIT(BaseImputer):
         }
 
         print(f"Starting EDIT training on {self.device}...")
-        em.train_edit_algorithm(
+        self.norm_parameters = em.train_edit_algorithm(
             self.generator,
             self.discriminator,
-            norm_data_x,
+            data_for_train,
             mask_f32,
             params,
             self.device,
