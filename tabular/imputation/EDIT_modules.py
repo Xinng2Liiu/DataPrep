@@ -111,7 +111,7 @@ def sample_Z(batch_size, dim):
 
 
 def sample_M(batch_size, dim, p):
-    """生成 Hint 向量所需的随机掩码 (>p 为 1)"""
+    """生成 Hint 向量所需的二值掩码 (>p 为 1)"""
     np.random.seed(50)
     unif_random_matrix = np.random.uniform(0., 1., size=[batch_size, dim])
     return 1. * (unif_random_matrix < p)

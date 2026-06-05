@@ -116,6 +116,24 @@ class TestMLNCleanModules(unittest.TestCase):
         self.assertEqual(len(parts), 1)
         self.assertEqual(parts[0].shape, df.shape)
 
+    def test_data_partition_multi_does_not_drop_rows(self):
+        """多分区时每一行必须出现一次，不能丢，不能重复"""
+        df = pd.DataFrame({
+            'ID': list(range(12)),
+            'A': list('abcdefghijkl'),
+            'B': list('mnopqrstuvwx'),
+        })
+
+        parts = mo.data_partition(df, partition_num=3, random_seed=0)
+
+        all_indices = []
+        for part in parts:
+            all_indices.extend(part.index.tolist())
+
+        self.assertEqual(len(parts), 3)
+        self.assertEqual(sorted(all_indices), list(df.index))
+        self.assertEqual(len(all_indices), len(set(all_indices)))
+
     def test_binary_heap_basic(self):
         """二叉堆基本操作"""
         h = mo.BinaryHeap()

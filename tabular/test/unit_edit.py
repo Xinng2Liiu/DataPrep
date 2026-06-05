@@ -108,11 +108,13 @@ class TestEDITModules(unittest.TestCase):
         self.assertTrue((z <= 0.01).all())
 
     def test_sample_M(self):
-        #测试随机 mask M 的形状和二值性
-        m = em.sample_M(batch_size=5, dim=3, p=0.5)
+        #测试 mask M 的形状和二值性，且可复现
+        m1 = em.sample_M(batch_size=5, dim=3, p=0.9)
+        m2 = em.sample_M(batch_size=5, dim=3, p=0.9)
 
-        self.assertEqual(m.shape, (5, 3))
-        self.assertTrue(np.isin(m, [0, 1]).all())
+        np.testing.assert_array_equal(m1, m2)
+        self.assertEqual(m1.shape, (5, 3))
+        self.assertTrue(np.isin(m1, [0, 1]).all())
 
     def test_rounding(self):
         """类别型列应被四舍五入"""
