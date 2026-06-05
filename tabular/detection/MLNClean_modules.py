@@ -784,6 +784,8 @@ def to_bool_mask(mask_df):
         1 = 错误，需要修复
         0 = 正常，不修复
     """
+    mask_df = mask_df.loc[:, ~mask_df.columns.astype(str).str.startswith("Unnamed:")]
+
     return mask_df.replace({
         "True": 1,
         "False": 0,

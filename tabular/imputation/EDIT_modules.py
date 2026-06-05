@@ -111,7 +111,7 @@ def sample_Z(batch_size, dim):
 
 
 def sample_M(batch_size, dim, p):
-    """生成 Hint 向量所需的随机掩码 (>p 为 1)"""
+    """生成 Hint 向量所需的随机掩码 """
     unif_random_matrix = np.random.uniform(0., 1., size=[batch_size, dim])
     return 1. * (unif_random_matrix < p)
 
@@ -285,7 +285,7 @@ def compute_influence_scores(generator, discriminator,
     """
     # 1. Hessian 的逆（基于初始训练集）
     h_inv = _compute_inverse_hessian_approx(
-        generator, discriminator, init_data, init_mask, params, device, fixed_hint=True
+        generator, discriminator, init_data, init_mask, params, device
     )
 
     # 2. 验证集的梯度（行向量）
@@ -307,7 +307,7 @@ def compute_influence_scores(generator, discriminator,
         m_row = full_mask[i:i + 1]
         # 单样本梯度 [P_i, 1] 拼成 [sum P_i, 1]
         layer_grads = _compute_layer_gradients(
-            generator, discriminator, x_row, m_row, params, device
+            generator, discriminator, x_row, m_row, params, device, fixed_hint=True
         )
         train_grad = torch.cat([g.t() for g in layer_grads], dim=0)
         infl = (ihvp_concat @ train_grad).item()

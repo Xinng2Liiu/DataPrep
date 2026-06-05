@@ -1,7 +1,7 @@
 import sys
 import os
 import pandas as pd
-
+import pytest
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(current_dir, "../../.."))
 sys.path.append(project_root)
@@ -48,7 +48,7 @@ def test_mlnclean():
     print("========================================")
 
     if not check_dependencies():
-        return
+        pytest.skip("MLNClean dependencies are not installed")
 
     dirty_df, evidence_df, rules = generate_fake_data()
 

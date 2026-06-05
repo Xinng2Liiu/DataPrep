@@ -58,7 +58,7 @@ class EDIT(BaseImputer):
     def train(self, data: np.ndarray, missing_mask: np.ndarray = None) -> None:
         """
         Args:
-            data         : np.ndarray, 原始数据 (缺失位置为 NaN 或任意值)
+            data         : np.ndarray, 原始数据
             missing_mask : np.ndarray, 1=观测, 0=缺失。不传时按 NaN 自动生成。
         """
         if hasattr(self, '_create_temp_dir'):
@@ -111,7 +111,7 @@ class EDIT(BaseImputer):
     def predict(self, data: np.ndarray, missing_mask: np.ndarray = None) -> np.ndarray:
         """
         Args:
-            data : np.ndarray, 待填补数据 (NaN 表示缺失)
+            data : np.ndarray
             missing_mask : np.ndarray, 1=观测, 0=缺失。
         Returns:
             imputed_data : 填补后的完整数据
@@ -129,6 +129,7 @@ class EDIT(BaseImputer):
             missing_mask = np.array(missing_mask, dtype=np.float64)
 
         missing_mask = missing_mask.astype(np.float32)
+        observed_mask = missing_mask.astype(bool)
 
         no, dim = data.shape
 
@@ -161,6 +162,9 @@ class EDIT(BaseImputer):
         data_for_rounding = data.copy()
         data_for_rounding[missing_mask == 0] = np.nan
         imputed_data = em.rounding(imputed_data, data_for_rounding)
+
+        # rounding 只保留在缺失填补位置，观测值严格恢复为原始值
+        imputed_data[observed_mask] = data[observed_mask]
 
         return imputed_data
 

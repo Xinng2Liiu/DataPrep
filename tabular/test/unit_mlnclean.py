@@ -64,6 +64,28 @@ class TestMLNCleanModules(unittest.TestCase):
         # 未改动位置
         self.assertFalse(mask.at[0, 'name'])
 
+    def test_compute_diff_mask_excludes_id_and_treats_nan_equal(self):
+        """compute_diff_mask 应排除 ID，且 NaN 对 NaN 不算变化。"""
+        dirty = pd.DataFrame({
+            'ID': [1, 2],
+            'name': ['Alice', 'BAD'],
+            'value': [np.nan, 'same'],
+        })
+        cleaned = pd.DataFrame({
+            'ID': [99, 99],
+            'name': ['Alice', 'Bob'],
+            'value': [np.nan, 'same'],
+        })
+
+        mask = mo.compute_diff_mask(dirty, cleaned)
+
+        self.assertFalse(mask.at[0, 'ID'])
+        self.assertFalse(mask.at[1, 'ID'])
+        self.assertFalse(mask.at[0, 'name'])
+        self.assertTrue(mask.at[1, 'name'])
+        self.assertFalse(mask.at[0, 'value'])
+        self.assertFalse(mask.at[1, 'value'])
+
     def test_apply_corrections_with_mask(self):
         """只在 mask=True 的位置应用 cleaned 的值"""
         dirty = pd.DataFrame({
@@ -142,6 +164,54 @@ class TestMLNCleanModules(unittest.TestCase):
         self.assertEqual(h.delete_min()[1], 'a')
         self.assertEqual(h.get_min(), 2)
 
+    def test_detection_path_string_zero_one_mask(self):
+        """通过 detection_path 读取的 '0'/'1' mask 必须正确解析"""
+        import tempfile
+
+        mask_df = pd.DataFrame({
+            'ID': ['0', '0'],
+            'val': ['0', '1'],
+        })
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, newline='') as f:
+            mask_path = f.name
+            mask_df.to_csv(mask_path, index=False)
+
+        try:
+            cor = MLNCleanCorrector(
+                rules=["!a(x) v b(y)"],
+                detection_path=mask_path,
+                verbose=False,
+            )
+
+            self.assertEqual(cor.detection_mask['val'].tolist(), [False, True])
+        finally:
+            os.remove(mask_path)
+
+    def test_detection_path_drops_unnamed_index_column(self):
+        """detection_path 读取默认 to_csv 保存的 mask 时，应忽略 Unnamed: 0"""
+        import tempfile
+
+        mask_df = pd.DataFrame({
+            'ID': ['0', '0'],
+            'val': ['0', '1'],
+        })
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, newline='') as f:
+            mask_path = f.name
+            mask_df.to_csv(mask_path)  # 故意保留 index
+
+        try:
+            cor = MLNCleanCorrector(
+                rules=["!a(x) v b(y)"],
+                detection_path=mask_path,
+                verbose=False,
+            )
+
+            self.assertNotIn('Unnamed: 0', cor.detection_mask.columns)
+            self.assertEqual(cor.detection_mask['val'].tolist(), [False, True])
+        finally:
+            os.remove(mask_path)
 
 # =============================================================================
 # 2. 测试 MLNClean Detector 主类

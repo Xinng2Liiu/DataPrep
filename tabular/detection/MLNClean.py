@@ -13,7 +13,7 @@ MLNClean Detector
 
     detector = MLNClean(
         rules=rules,
-        evidence_df=evidence_df,   # 可选, 不传则用 dirty_df 自己当证据
+        evidence_df=evidence_df,
         partition_number=1,
         mcmc_samples=20,
     )
@@ -50,7 +50,7 @@ class MLNClean(BaseEstimator):
             rules           : list[str], MLN 规则字符串 (一行一条)
             rules_path      : str, 规则文件路径 (二选一)
             evidence_df     : pd.DataFrame, 学权重用的证据数据
-            evidence_path   : str, 证据 CSV 路径 (二选一; 不传则用 dirty 自身)
+            evidence_path   : str, 证据 CSV 路径
             partition_number: int, 数据分区数; >1 时触发原 MLNClean 启发式分区
             agp_threshold   : int, AGP 组大小阈值
             mcmc_samples    : int, Pyro MCMC 采样数
@@ -65,7 +65,7 @@ class MLNClean(BaseEstimator):
                 rules = f.readlines()
         self.rules = list(rules)
 
-        # 证据: 优先 evidence_df, 否则 evidence_path, 否则用 dirty 自身
+        # 证据: 优先 evidence_df, 否则 evidence_path
         self.evidence_df = evidence_df
         if self.evidence_df is None and evidence_path is not None:
             self.evidence_df = pd.read_csv(evidence_path)

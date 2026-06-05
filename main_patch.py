@@ -638,7 +638,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     df_mask = pd.read_csv(paths.get("detectionPath"))
 
                     if 'index' in df_mask.columns: df_mask.drop(columns=['index'], inplace=True)
-                    if 'Unnamed: 0' in df_mask.columns: df_mask.drop(columns=['Unnamed: 0'])
+                    if 'Unnamed: 0' in df_mask.columns: df_mask.drop(columns=['Unnamed: 0'], inplace=True)
 
                     min_len = min(len(df_clean), len(df_dirty), len(df_mask))
                     df_clean, df_dirty, df_mask = df_clean.iloc[:min_len].reset_index(drop=True), df_dirty.iloc[

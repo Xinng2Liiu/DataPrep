@@ -108,13 +108,23 @@ class TestEDITModules(unittest.TestCase):
         self.assertTrue((z <= 0.01).all())
 
     def test_sample_M(self):
-        #测试 mask M 的形状和二值性，且可复现
-        m1 = em.sample_M(batch_size=5, dim=3, p=0.9)
-        m2 = em.sample_M(batch_size=5, dim=3, p=0.9)
+        #测试 mask M 的形状和二值性
+        m = em.sample_M(batch_size=5, dim=3, p=0.5)
 
-        np.testing.assert_array_equal(m1, m2)
-        self.assertEqual(m1.shape, (5, 3))
-        self.assertTrue(np.isin(m1, [0, 1]).all())
+        self.assertEqual(m.shape, (5, 3))
+        self.assertTrue(np.isin(m, [0, 1]).all())
+
+    def test_sample_M_random_and_fixed(self):
+        """训练阶段 sample_M 应随机；influence 阶段 fixed sampler 应可复现"""
+        a = em.sample_M(batch_size=50, dim=20, p=0.5)
+        b = em.sample_M(batch_size=50, dim=20, p=0.5)
+
+        # 极小概率会相等，但 50*20 规模下基本可忽略
+        self.assertFalse(np.array_equal(a, b))
+
+        fa = em.sample_M_fixed(batch_size=10, dim=4, p=0.5)
+        fb = em.sample_M_fixed(batch_size=10, dim=4, p=0.5)
+        np.testing.assert_array_equal(fa, fb)
 
     def test_rounding(self):
         """类别型列应被四舍五入"""
@@ -206,6 +216,52 @@ class TestEDITMain(unittest.TestCase):
         observed = self.mask.astype(bool)
         np.testing.assert_array_almost_equal(imputed[observed],self.raw_data[observed],decimal=4)
 
+    def test_predict_uses_missing_mask_not_nan_only(self):
+        """predict 应优先使用传入的 missing_mask，而不是只依赖 np.isnan(data)。"""
+
+        class ConstantGenerator(torch.nn.Module):
+            def forward(self, x, m):
+                return torch.zeros_like(x)
+
+        data = np.array([
+            [1.0, 999.0],
+            [2.0, 20.0],
+        ])
+        mask = np.array([
+            [1.0, 0.0],
+            [1.0, 1.0],
+        ])
+
+        self.imputer.generator = ConstantGenerator()
+        self.imputer.norm_parameters = {
+            'min': np.array([1.0, 10.0]),
+            'max': np.array([2.0, 20.0]),
+            'den': np.array([1.0, 10.0]),
+        }
+
+        imputed = self.imputer.predict(data, missing_mask=mask)
+
+        observed = mask.astype(bool)
+        np.testing.assert_array_almost_equal(imputed[observed], data[observed])
+        self.assertNotEqual(imputed[0, 1], 999.0)
+
+    @patch.object(EDIT, 'train')
+    @patch.object(EDIT, 'predict')
+    def test_train_and_predict_passes_missing_mask(self, mock_predict, mock_train):
+        """train_and_predict 应把外部 missing_mask 继续传给 predict。"""
+        data = np.array([[1.0, 999.0], [2.0, 20.0]])
+        mask = np.array([[1.0, 0.0], [1.0, 1.0]])
+        expected = np.array([[1.0, 10.0], [2.0, 20.0]])
+        mock_predict.return_value = expected
+
+        imputer = EDIT(device='cpu')
+        result = imputer.train_and_predict(data, missing_mask=mask)
+
+        self.assertIs(result, expected)
+        self.assertIs(mock_train.call_args.args[0], data)
+        self.assertIs(mock_train.call_args.args[1], mask)
+        self.assertIs(mock_predict.call_args.args[0], data)
+        self.assertIs(mock_predict.call_args.kwargs['missing_mask'], mask)
 
 if __name__ == '__main__':
     unittest.main()
