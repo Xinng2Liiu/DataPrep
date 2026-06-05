@@ -1,23 +1,5 @@
-"""
-EDIT: Efficient and effective Data Imputation with influence functions (VLDB 2021)
-
-用法 (与 GAIN / SCIS 完全一致):
-    from dataprep.tabular.imputation.EDIT import EDIT
-
-    imputer = EDIT(
-        batch_size=8,
-        hint_rate=0.9,
-        alpha=10,
-        epoch=10,
-        initial_size=6000,
-        validation_size=6000,
-        device='cuda' if torch.cuda.is_available() else 'cpu',
-    )
-    imputed_data = imputer.train_and_predict(data_missing, missing_mask)
-"""
 import numpy as np
 import torch
-
 import dataprep.tabular.imputation.EDIT_modules as em
 from dataprep.tabular.imputation.base import BaseImputer
 
@@ -128,10 +110,11 @@ class EDIT(BaseImputer):
     # ------------------------------------------------------------------
     # Predict
     # ------------------------------------------------------------------
-    def predict(self, data: np.ndarray) -> np.ndarray:
+    def predict(self, data: np.ndarray, missing_mask: np.ndarray = None) -> np.ndarray:
         """
         Args:
             data : np.ndarray, 待填补数据 (NaN 表示缺失)
+            missing_mask : np.ndarray, 1=观测, 0=缺失。
         Returns:
             imputed_data : 填补后的完整数据
         """
@@ -141,11 +124,21 @@ class EDIT(BaseImputer):
         self.generator.eval()
 
         data = np.array(data, dtype=np.float64)
-        missing_mask = (1. - np.isnan(data)).astype(np.float32)
+
+        if missing_mask is None:
+            missing_mask = 1. - np.isnan(data)
+        else:
+            missing_mask = np.array(missing_mask, dtype=np.float64)
+
+        missing_mask = missing_mask.astype(np.float32)
+
         no, dim = data.shape
 
         # 1. 归一化
-        norm_data = em.normalization_with_parameter(data, self.norm_parameters)
+        data_for_norm = data.copy()
+        data_for_norm[missing_mask == 0] = np.nan
+
+        norm_data = em.normalization_with_parameter(data_for_norm, self.norm_parameters)
         norm_data_x = np.nan_to_num(norm_data, 0).astype(np.float32)
 
         # 2. 把缺失位置注入噪声 (和训练时一致)
@@ -166,7 +159,13 @@ class EDIT(BaseImputer):
         imputed_data = em.renormalization(imputed_data_norm, self.norm_parameters)
 
 
-        # 6. 对类别型变量做 rounding，和原版 EDIT-GAIN 保持一致
-        imputed_data = em.rounding(imputed_data, data)
+        # 6. 对类别型变量做 rounding
+        data_for_rounding = data.copy()
+        data_for_rounding[missing_mask == 0] = np.nan
+        imputed_data = em.rounding(imputed_data, data_for_rounding)
 
         return imputed_data
+
+    def train_and_predict(self, data: np.ndarray, missing_mask: np.ndarray = None) -> np.ndarray:
+        self.train(data, missing_mask)
+        return self.predict(data, missing_mask=missing_mask)
