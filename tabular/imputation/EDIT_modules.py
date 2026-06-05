@@ -111,11 +111,15 @@ def sample_Z(batch_size, dim):
 
 
 def sample_M(batch_size, dim, p):
-    """生成 Hint 向量所需的二值掩码 (>p 为 1)"""
-    np.random.seed(50)
+    """生成 Hint 向量所需的随机掩码 (>p 为 1)"""
     unif_random_matrix = np.random.uniform(0., 1., size=[batch_size, dim])
     return 1. * (unif_random_matrix < p)
 
+def sample_M_fixed(batch_size, dim, p, seed=50):
+    """influence 阶段使用的固定 hint mask"""
+    rng = np.random.RandomState(seed)
+    unif_random_matrix = rng.uniform(0., 1., size=[batch_size, dim])
+    return 1. * (unif_random_matrix < p)
 
 # ==========================================
 # 3. Loss 计算 (Loss Helpers)
@@ -210,11 +214,12 @@ def _run_training_phase(generator, discriminator, data_x, mask,
 # 5. 影响函数 (Influence Function Core)
 # ==========================================
 
-def _make_inputs_torch(data_x, mask, params, device):
+def _make_inputs_torch(data_x, mask, params, device, fixed_hint=False):
     """把 np 数据组装成训练时的 (x_in, m, h)，全部 GPU tensor"""
     no, dim = data_x.shape
     z = sample_Z(no, dim)
-    h = mask * sample_M(no, dim, params['hint_rate'])
+    hint_sampler = sample_M_fixed if fixed_hint else sample_M
+    h = mask * hint_sampler(no, dim, params['hint_rate'])
     x_in = mask * data_x + (1 - mask) * z
 
     return (
@@ -234,7 +239,7 @@ def _compute_inverse_hessian_approx(generator, discriminator, init_data, init_ma
         H_invert     = [tf.linalg.inv(item + 1e-3) for ...]
     返回: list[Tensor], 每层一个 H^-1 矩阵
     """
-    x_in, m, h = _make_inputs_torch(init_data, init_mask, params, device)
+    x_in, m, h = _make_inputs_torch(init_data, init_mask, params, device, fixed_hint=True)
     g_loss, _ = _compute_generator_loss(
         generator, discriminator, x_in, m, h,
         params['alpha'], params['damping']
@@ -253,9 +258,9 @@ def _compute_inverse_hessian_approx(generator, discriminator, init_data, init_ma
     return h_inv_list
 
 
-def _compute_layer_gradients(generator, discriminator, data_x, mask, params, device):
+def _compute_layer_gradients(generator, discriminator, data_x, mask, params, device, fixed_hint=False):
     """计算 generator 各层的梯度（flatten 后），返回 list[Tensor] (1, P) 形状"""
-    x_in, m, h = _make_inputs_torch(data_x, mask, params, device)
+    x_in, m, h = _make_inputs_torch(data_x, mask, params, device, fixed_hint=fixed_hint)
     g_loss, _ = _compute_generator_loss(
         generator, discriminator, x_in, m, h,
         params['alpha'], params['damping']
@@ -280,12 +285,12 @@ def compute_influence_scores(generator, discriminator,
     """
     # 1. Hessian 的逆（基于初始训练集）
     h_inv = _compute_inverse_hessian_approx(
-        generator, discriminator, init_data, init_mask, params, device
+        generator, discriminator, init_data, init_mask, params, device, fixed_hint=True
     )
 
     # 2. 验证集的梯度（行向量）
     val_grad = _compute_layer_gradients(
-        generator, discriminator, val_data, val_mask, params, device
+        generator, discriminator, val_data, val_mask, params, device, fixed_hint=True
     )
 
     # 3. IHVP[i] = val_grad[i] @ H_inv[i]  形状 [1, P_i]
