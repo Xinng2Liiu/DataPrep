@@ -142,13 +142,11 @@ def _dist(a, b):
 def data_partition(df, partition_num=1, random_seed=None):
     """
     把 df 按汉明距离启发式平分成 partition_num 组.
-    partition_num=1 时退化为 [整个df], 仅当分布式/并行训练时才会 >1.
-
-    Args:
-        df: pd.DataFrame, 输入数据 (含 ID 列)
-        partition_num: int, 分组数
-    Returns:
-        partitions: list[pd.DataFrame], 每个元素是一组
+        1. 随机选 partition_num 个质心；
+        2. 每个分区最多 max_per_pkg 行；
+        3. 每行优先放到距离最近的质心分区；
+        4. 如果最近分区已满，且当前行比该分区中最远的旧行更近，则替换旧行，并把旧行重新分配；
+        5. 所有行必须且只能出现一次。
     """
     if partition_num <= 1:
         return [df.copy()]
@@ -170,22 +168,27 @@ def data_partition(df, partition_num=1, random_seed=None):
     for i in range(n):
         if i in centroid_idx:
             continue
-        dist_to_c = [_dist(rows[i], rows[j]) for j in centroid_idx]
-        placed = False
-        while not placed:
-            min_dist = min(dist_to_c)
-            min_idx = dist_to_c.index(min_dist)
-            if len(heaps[min_idx]) < max_per_pkg:
-                heaps[min_idx].insert([[-min_dist, i]])
-                placed = True
-            else:
-                top_element = heaps[min_idx].get_min()
-                if top_element is not None and top_element > min_dist:
-                    heaps[min_idx].delete_min()
-                    heaps[min_idx].insert([[-min_dist, i]])
+        cur_i = i
+        while cur_i is not None:
+            dist_to_c = [_dist(rows[cur_i], rows[j]) for j in centroid_idx]
+            placed = False
+            while not placed:
+                min_dist = min(dist_to_c)
+                min_idx = dist_to_c.index(min_dist)
+                if len(heaps[min_idx]) < max_per_pkg:
+                    heaps[min_idx].insert([[-min_dist, cur_i]])
                     placed = True
+                    cur_i = None
                 else:
-                    dist_to_c[min_idx] = rows.shape[1] + 1  # 排除该质心
+                    top_element = heaps[min_idx].get_min()
+                    # 堆里存的是 [-distance, row_idx]，
+                    if top_element is not None and (-top_element) > min_dist:
+                        _, old_i = heaps[min_idx].delete_min()
+                        heaps[min_idx].insert([[-min_dist, cur_i]])
+                        cur_i = old_i
+                        placed = True
+                    else:
+                        dist_to_c[min_idx] = rows.shape[1] + 1
 
     result = []
     for h in heaps:
