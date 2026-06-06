@@ -130,7 +130,67 @@ cleaned_df = corrector.train_and_predict()
 
 # 3. Save Corrected Data
 cleaned_df.to_csv('final_corrected_data.csv')
+
+
 ```
+
+## 🧪 Command-line Evaluation
+
+The command-line evaluation client `evaluate_backend.py` sends tasks to the backend WebSocket endpoint:
+
+```text
+ws://127.0.0.1:8088/api/ws/run_task
+```
+
+Start the backend first:
+
+```bash
+python main.py
+```
+
+Then run evaluations in another terminal:
+
+```bash
+# Imputation
+python evaluate_backend.py --task gain --gain-epoch 1000
+python evaluate_backend.py --task edit --epoch 1000
+
+# MLNClean on flights
+python evaluate_backend.py --task mln-det --dataset flights
+python evaluate_backend.py --task mln-cor --dataset flights
+
+# Unit tests
+python -m unittest -v tabular.test.unit_edit tabular.test.unit_mlnclean
+```
+
+For `ZeroED` and `ZeroEC`, do not hard-code API keys in source files. Use environment variables instead:
+
+```bash
+set SILICONFLOW_API_KEY=your_key
+```
+
+## 📌 EDIT and MLNClean Notes
+
+### EDIT
+
+`EDIT` is integrated under:
+
+```text
+tabular/imputation/EDIT.py
+tabular/imputation/EDIT_modules.py
+```
+
+### MLNClean
+
+`MLNClean` is split into detection and correction modules:
+
+```text
+tabular/detection/MLNClean.py
+tabular/detection/MLNClean_modules.py
+tabular/correction/MLNClean.py
+```
+
+For rule-based evaluation, `rules_data.csv` should be generated from dirty data after dropping rows with missing rule-related fields.
 
 ## 📊 Performance Comparison
 As demonstrated in the benchmark results below, DataPrep's advanced algorithms consistently outperform traditional `scikit-learn` baselines across most data governance scenarios.

@@ -258,7 +258,7 @@ def parse_args():
     # ZeroEC params
     parser.add_argument("--zeroec-model-name", default="Qwen/Qwen2.5-7B-Instruct")
     parser.add_argument("--zeroec-api-base", default="https://api.siliconflow.cn/v1")
-    parser.add_argument("--zeroec-api-key", default="sk-rnokjhjonvggoaddaprdpwgqsqwsmpnaadmziesaagxnuxxg")
+    parser.add_argument("--zeroec-api-key", default="sk-")
     parser.add_argument("--zeroec-embedding-model-path", default="tabular/correction/all-MiniLM-L6-v2")
     parser.add_argument("--zeroec-human-repair-num", type=int, default=10)
     parser.add_argument("--zeroec-output-dir", default="./runs_output")
