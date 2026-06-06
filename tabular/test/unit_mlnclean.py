@@ -156,6 +156,25 @@ class TestMLNCleanModules(unittest.TestCase):
         self.assertEqual(sorted(all_indices), list(df.index))
         self.assertEqual(len(all_indices), len(set(all_indices)))
 
+    @patch('dataprep.tabular.detection.MLNClean_modules.random.sample')
+    def test_data_partition_replaces_farthest_when_closer_row_arrives(self, mock_sample):
+        """最近分区已满时，更近的新行应替换该分区里最远的旧行。"""
+        mock_sample.return_value = [0, 1]
+
+        df = pd.DataFrame({
+            'A': [0, 1, 1, 1, 0],
+            'B': [0, 1, 0, 1, 0],
+            'C': [0, 1, 0, 0, 0],
+            'D': [0, 1, 0, 0, 1],
+        })
+
+        parts = mo.data_partition(df, partition_num=2)
+
+        # 以 centroid 0 为中心的分区应保留更近的 row 4，
+        # 并把更远的 row 3 挤出去。
+        self.assertIn(4, parts[0].index)
+        self.assertNotIn(3, parts[0].index)
+        
     def test_binary_heap_basic(self):
         """二叉堆基本操作"""
         h = mo.BinaryHeap()
